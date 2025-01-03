@@ -1,98 +1,93 @@
 from flask import Flask, request, jsonify
-from collections import OrderedDict, deque
-import cohere  # Install using: pip install cohere
+import random
+import cohere
 
 # Initialize Flask app and Cohere client
 app = Flask(__name__)
-
 cohere_client = cohere.Client('vE1Dkwt4h88KMxapx1gcKcw7sHwaS4AauhTIaCpO')  # Replace with your Cohere API key
 
-# Edge node caches, with region-based naming
-edge_nodes = {
-    "node_us": {},
-    "node_eu": {},
-    "node_asia": {},
-}
-node_cache_size_limit = 5  # Cache size limit per node
-region_histories = {  # Maintain separate histories for each region and user
-    "us": {},
-    "eu": {},
-    "asia": {},
-}
+cache = {}  # Cache structure
 
-# Function to generate predictions from Cohere API
-def get_predictions_from_cohere(history, genre, region):
-    # Prepare the prompt to send to Cohere for genre predictions
-    prompt = f"Given the user's genre history: {', '.join(history)} and the current genre preference: {genre}, and current region {region}, suggest the next 3 genres no verbose explanation, just the genres separated by commas, no serial numbers needed."
-    
-    response = cohere_client.generate(  
-        model='command',
-        prompt=prompt,
-        max_tokens=10,
-        temperature=0.7
-    )
-    
-    # Extract predicted genres from the response text
-    predictions = response.generations[0].text.strip().split(", ")
-    return predictions
+def predict_genre(movie_title):
+    """Predict the genre for a given movie title using Cohere."""
+    try:
+        response = cohere_client.generate(
+            model='command',
+            prompt=f"Given the movie title '{movie_title}', predict its genre. Only output the genre name (e.g., action, romance, comedy) , no addition explanantion no intro needed",
+            max_tokens=10,
+            temperature=0.5,
+        )
+        return response.generations[0].text.strip().lower()
+    except Exception as e:
+        print(f"Error with Cohere genre prediction: {e}")
+        return None
 
-# Assign user to a region-based edge node
-def get_assigned_edge_node(region):
-    return f"node_{region.lower()}"
+def predict_movies(genre):
+    """Predict movie titles for a given genre using Cohere."""
+    try:
+        response = cohere_client.generate(
+            model='command',
+            prompt=f"List 5 popular movies in the {genre} genre. Only output the movie titles separated by commas no need to even tell 'here are the' type things, no additional explanation no need for intro also ",
+            max_tokens=50,
+            temperature=0.7,
+        )
+        movies = [movie.strip() for movie in response.generations[0].text.split(",") if movie.strip()]
+        return movies[:5]  # Ensure exactly 5 movies
+    except Exception as e:
+        print(f"Error with Cohere movie prediction: {e}")
+        return []
 
-# Function to synchronize caches for a specific user
-def synchronize_user_cache(region, user_id, new_entries):
-    node_name = get_assigned_edge_node(region)
-    node_cache = edge_nodes[node_name]
-
-    # Ensure user-specific cache is initialized
-    if user_id not in node_cache:
-        node_cache[user_id] = deque(maxlen=node_cache_size_limit)
-
-    # Add new entries to the user's cache
-    for entry in new_entries:
-        if entry in node_cache[user_id]:
-            node_cache[user_id].remove(entry)  # Remove existing entry to re-add it
-        node_cache[user_id].append(entry)
-
-@app.route("/request", methods=["POST"])
-def handle_request():
+@app.route('/make_request', methods=['POST'])
+def make_request():
     data = request.json
-    user_id = data["user_id"]
-    entered_genre = data["genre"].lower()
-    region = data["region"].lower()
+    user_id = str(data["user_id"])
+    movie_title = data.get("movie_title")
+    genre = data.get("genre")
 
-    # Assign user to a region-based edge node
-    assigned_node_name = get_assigned_edge_node(region)
-    assigned_node = edge_nodes[assigned_node_name]
+    # Initialize cache for user
+    if user_id not in cache:
+        cache[user_id] = {}
 
-    # Ensure user-specific cache is initialized
-    if user_id not in assigned_node:
-        assigned_node[user_id] = deque(maxlen=node_cache_size_limit)
+    if movie_title:
+        genre = predict_genre(movie_title)
+        if not genre:
+            return jsonify({"error": "Movie genre not found"}), 404
 
-    # Check if the genre is in the user's cache
-    if entered_genre in assigned_node[user_id]:
-        # Move the genre to the most recently used position
-        assigned_node[user_id].remove(entered_genre)
-        assigned_node[user_id].append(entered_genre)
-        return jsonify({"status": "cache_hit", "node": assigned_node_name, "user": user_id, "genre": entered_genre})
-    else:
-        # Generate predictions based on user-specific history
-        user_history = list(region_histories[region].get(user_id, []))
-        new_predictions = get_predictions_from_cohere(user_history, entered_genre, region)
+    if genre:
+        if genre in cache[user_id]:
+            return jsonify({
+                "genre": genre,
+                "movies": cache[user_id][genre],
+                "status": "cache_hit"
+            })
 
-        # Update user-specific and region histories
-        synchronize_user_cache(region, user_id, [entered_genre] + new_predictions)
-        if user_id not in region_histories[region]:
-            region_histories[region][user_id] = deque(maxlen=node_cache_size_limit)
-        region_histories[region][user_id].append(entered_genre)
+        # Cache miss: Predict movies for the genre
+        movies = predict_movies(genre)
+        cache[user_id][genre] = movies
 
-        return jsonify({"status": "cache_miss", "node": assigned_node_name, "user": user_id, "predictions": new_predictions})
+        # Add predictions for 4 additional genres
+        other_genres = []
+        while len(other_genres) < 4:
+            random_genre = predict_genre(f"Random Genre Seed {random.randint(1, 10000)}")
+            if random_genre and random_genre not in other_genres and random_genre != genre:
+                other_genres.append(random_genre)
 
-@app.route("/cache_status", methods=["GET"])
+        for g in other_genres:
+            if g not in cache[user_id]:
+                cache[user_id][g] = predict_movies(g)
+
+        return jsonify({
+            "genre": genre,
+            "movies": movies,
+            "predictions": {g: cache[user_id][g] for g in [genre] + other_genres},
+            "status": "cache_miss"
+        })
+
+    return jsonify({"error": "Invalid request"}), 400
+
+@app.route('/cache_status', methods=['GET'])
 def cache_status():
-    # Return cache status for all edge nodes and user-specific caches
-    return jsonify({node_name: {user_id: list(cache) for user_id, cache in node_cache.items()} for node_name, node_cache in edge_nodes.items()})
+    return jsonify(cache)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(debug=True)
