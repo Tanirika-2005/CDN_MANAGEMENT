@@ -1,31 +1,4 @@
-# Intelligent Movie Recommendation Caching System
 
-This project implements an intelligent caching system for movie recommendations, optimizing performance by caching frequently accessed data and predicting the next movie genres a user might be interested in. The system intelligently predicts genres and movies based on user behavior and location, providing an efficient cache management strategy.
-
-## Features
-
-- **Intelligent Caching**: Caches movie recommendations based on genres, storing only the most frequently requested ones to optimize performance.
-- **Cache Eviction**: Implements an LRU (Least Recently Used) eviction strategy to keep the cache size manageable while prioritizing recently requested genres.
-- **User-Specific History**: Maintains a history of each user’s movie requests, dynamically updating with each new request.
-- **Location-Based Edge Servers**: Selects the optimal edge server based on the user’s location, improving response times.
-- **Cache Hit/Miss Handling**: Determines whether the requested genre is already in the cache (cache hit) or needs to be fetched (cache miss), providing immediate results when possible.
-
----
-
-## Getting Started
-
-### Prerequisites
-
-To run this project, ensure you have:
-
-- Python 3.7 or higher.
-- A valid [Cohere API key](https://cohere.ai/) to make genre and movie predictions.
-
-
-Here's a README.md focusing on the Intelligent Caching aspect of your project:
-
-markdown
-Copy code
 # Intelligent Movie Recommendation Caching System
 
 This project implements an intelligent caching system for movie recommendations, optimizing performance by caching frequently accessed data and predicting the next movie genres a user might be interested in. The system intelligently predicts genres and movies based on user behavior and location, providing an efficient cache management strategy.
