@@ -4,7 +4,7 @@ from collections import OrderedDict, deque
 
 # Initialize Flask app and Cohere client
 app = Flask(__name__)
-cohere_client = cohere.Client('ziOwuDQOWca1Rv72LSeYpts9DMWHZEzNXpvFg6LO')  # Replace with your Cohere API key
+cohere_client = cohere.Client('put ur own key')  # Replace with your Cohere API key
 
 # Cache setup
 cache = {}
